@@ -1,0 +1,19 @@
+@"
+# Python
+__pycache__/
+*.pyc
+
+# Local env & secrets
+.env
+reddit-extractor/.env
+
+# Data outputs
+*.csv
+reddit-extractor/data/
+
+# Editor/OS junk
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+"@ | Out-File -FilePath ".\.gitignore" -Encoding utf8 -Force
