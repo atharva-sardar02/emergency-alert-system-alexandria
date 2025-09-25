@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Alexandria EAS — API URL Builder</title>
+
+<!-- If you saved the CSS in styles.css, keep this line; otherwise paste CSS in a <style> block -->
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <form id="placeForm">
+      <h2 style="grid-column:1/-1;margin:12px 0 6px;">Emergency Data URL Builder</h2>
+      <small class="hint" style="grid-column:1/-1;margin-bottom:6px;">
+        Enter place details once — get FIRMS, USGS Water, NWS Alerts, Earthquakes (and note for PulsePoint).
+      </small>
+
+      <div class="hr"></div>
+
+      <!-- Place -->
+      <h3>Place</h3>
+      <label class="half">Name
+        <input name="name" type="text" value="Alexandria, VA" />
+      </label>
+      <label class="third">Lat
+        <input name="lat" type="number" step="0.0001" value="38.8048" required />
+      </label>
+      <label class="third">Lon
+        <input name="lon" type="number" step="0.0001" value="-77.0469" required />
+      </label>
+
+      <label class="third">BBox minLon
+        <input name="minLon" type="number" step="0.01" value="-77.5" required />
+      </label>
+      <label class="third">minLat
+        <input name="minLat" type="number" step="0.01" value="38.6" required />
+      </label>
+      <label class="third">maxLon
+        <input name="maxLon" type="number" step="0.01" value="-76.8" required />
+      </label>
+      <label class="third">maxLat
+        <input name="maxLat" type="number" step="0.01" value="39.1" required />
+      </label>
+
+      <div class="hr"></div>
+
+      <!-- FIRMS -->
+      <h3>NASA FIRMS (Fires/Hotspots)</h3>
+      <label class="third">Dataset
+        <select name="firms_dataset">
+          <option>VIIRS_SNPP_NRT</option>
+          <option>VIIRS_NOAA20_NRT</option>
+          <option>MODIS_NRT</option>
+        </select>
+      </label>
+      <label class="third">Days
+        <input name="firms_days" type="number" min="1" max="30" value="7" />
+      </label>
+      <label class="half">API Key
+        <input name="firms_key" type="password" placeholder="YOUR_FIRMS_KEY" />
+      </label>
+      <small class="hint wide">FIRMS area API requires an API key. Keep keys out of client-side code in production.</small>
+
+      <div class="hr"></div>
+
+      <!-- USGS Water -->
+      <h3>USGS Water (Instantaneous Values)</h3>
+      <label class="half">Parameter Codes (comma)
+        <input name="usgs_params" value="00065,00060" />
+      </label>
+      <label class="half">Preferred Site IDs (comma)
+        <input name="usgs_sites" value="01652500" />
+      </label>
+      <small class="hint wide">If you don’t know site IDs, discover via USGS Site Service with your bbox.</small>
+
+      <div class="hr"></div>
+
+      <!-- NWS Alerts -->
+      <h3>NWS Weather Alerts</h3>
+      <label class="half">We’ll resolve your Lat/Lon to the correct NWS zone via <code>/points/{lat,lon}</code>.</label>
+      <small class="hint wide">Use the zone(s) from <code>/points</code> to call <code>/alerts/active?zone=XYZ</code>.</small>
+
+      <div class="hr"></div>
+
+      <!-- Earthquakes -->
+      <h3>USGS Earthquakes</h3>
+      <label class="third">Radius (km)
+        <input name="quakes_radius_km" type="number" value="75" />
+      </label>
+      <label class="third">Use Global “Significant Week” feed?
+        <select name="quakes_global">
+          <option value="0" selected>No (use radius)</option>
+          <option value="1">Yes (global feed)</option>
+        </select>
+      </label>
+
+      <div class="hr"></div>
+
+      <button type="submit">Build URLs</button>
+    </form>
+  </div>
+
+  <pre id="out"></pre>
+
+<script>
+function safeNum(v, d=0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
+
+document.getElementById('placeForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+
+  const lat = safeNum(f.get('lat'), 0);
+  const lon = safeNum(f.get('lon'), 0);
+  const minLon = safeNum(f.get('minLon'), 0);
+  const minLat = safeNum(f.get('minLat'), 0);
+  const maxLon = safeNum(f.get('maxLon'), 0);
+  const maxLat = safeNum(f.get('maxLat'), 0);
+
+  // FIRMS
+  const firmsKey = (f.get('firms_key') || '').trim();
+  const firmsDataset = f.get('firms_dataset');
+  const firmsDays = safeNum(f.get('firms_days'), 7);
+  const firms = firmsKey
+    ? `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(firmsKey)}/${encodeURIComponent(firmsDataset)}/${minLon},${minLat},${maxLon},${maxLat}/${firmsDays}`
+    : "(FIRMS) Provide API key to build the area URL";
+
+  // USGS Water
+  const usgsParams = (f.get('usgs_params') || '').replace(/\s+/g,'');
+  const usgsSites = (f.get('usgs_sites') || '').replace(/\s+/g,'');
+  const usgsWater = `https://waterservices.usgs.gov/nwis/iv/?format=json&sites=${encodeURIComponent(usgsSites)}&parameterCd=${encodeURIComponent(usgsParams)}`;
+
+  // NWS alerts (point → zones)
+  const nwsPoints = `https://api.weather.gov/points/${lat},${lon}`;
+  const nwsAlertsZoneHint = "Use zones from /points response → https://api.weather.gov/alerts/active?zone=ZONEID";
+
+  // Earthquakes
+  const useGlobal = String(f.get('quakes_global')) === '1';
+  const quakes = useGlobal
+    ? 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_week.geojson'
+    : `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${lat}&longitude=${lon}&maxradiuskm=${safeNum(f.get('quakes_radius_km'),75)}`;
+
+  // PulsePoint note (agency-dependent)
+  const pulsepointNote = 'PulsePoint JSON varies by agency; use only if an agency feed is published. Example: https://web.pulsepoint.org/db/<AGENCY>/Incidents.json';
+
+  const payload = {
+    place: { name: f.get('name'), lat, lon, bbox: { minLon, minLat, maxLon, maxLat } },
+    urls: {
+      firms,
+      usgsWater,
+      nwsPoints,
+      nwsAlertsZoneHint,
+      quakes,
+      pulsepointNote
+    }
+  };
+
+  document.getElementById('out').textContent = JSON.stringify(payload, null, 2);
+});
+</script>
+</body>
+</html>
